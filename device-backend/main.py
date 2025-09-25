@@ -39,7 +39,33 @@ class LatestMetric(BaseModel):
     distance: Optional[float] = None
 
 # ---------- アプリ ----------
-app = FastAPI(title="Waterlevel Registry API", version="0.1.0")
+app = FastAPI(
+    title="IoT Water Level Device Registry API",
+    description="""
+    ## 水位センサーデバイス管理API
+    
+    このAPIは、IoT水位センサーデバイスの登録、位置管理、データ取得を行うためのRESTful APIです。
+    
+    ### 主な機能
+    - デバイス一覧の取得
+    - デバイスの位置登録
+    - 最新の水位データ取得
+    - デバイスの履歴データ取得
+    - 全デバイスの統計情報取得
+    
+    ### データソース
+    - **DynamoDB**: デバイス情報の管理
+    - **AWS Timestream**: 時系列データ（水位測定値）の管理
+    """,
+    version="1.0.0",
+    contact={
+        "name": "IoT Water Level System",
+        "email": "admin@example.com",
+    },
+    license_info={
+        "name": "MIT",
+    },
+)
 
 # CORS
 origins = [o.strip() for o in os.getenv("CORS_ORIGINS","*").split(",")]
@@ -56,7 +82,9 @@ def now_utc_iso():
 
 # ---------- エンドポイント ----------
 
-@app.post("/devices/claim", response_model=DeviceItem)
+@app.post("/devices/claim", response_model=DeviceItem, 
+          summary="デバイスの位置を登録",
+          description="指定されたデバイスIDの位置情報（緯度・経度）を登録します。")
 def claim_device(body: ClaimRequest):
     r = ddb_tbl.get_item(Key={"deviceId": body.deviceId})
     it = r.get("Item")
@@ -88,7 +116,9 @@ def claim_device(body: ClaimRequest):
         updatedAt=now_utc_iso(),
     )
 
-@app.get("/devices/{deviceId}/latest", response_model=LatestMetric)
+@app.get("/devices/{deviceId}/latest", response_model=LatestMetric,
+         summary="デバイスの最新データを取得",
+         description="指定されたデバイスIDの最新の水位測定データを取得します。")
 def latest_metric(deviceId: str):
     q = f"""
     SELECT time, measure_value::double AS distance
@@ -108,7 +138,77 @@ def latest_metric(deviceId: str):
         distance=float(data[1]["ScalarValue"])
     )
 
-@app.get("/devices", response_model=List[DeviceItem])
+@app.get("/devices/{deviceId}/history",
+         summary="デバイスの履歴データを取得",
+         description="指定されたデバイスIDの過去の水位測定データを取得します。")
+def device_history(deviceId: str, hours: int = 24, limit: int = 100):
+    """デバイスの履歴データを取得"""
+    q = f"""
+    SELECT time, measure_value::double AS distance
+    FROM "{TS_DB}"."{TS_TABLE}"
+    WHERE measure_name='distance' 
+    AND deviceId = '{deviceId}'
+    AND time > ago({hours}h)
+    ORDER BY time DESC
+    LIMIT {limit}
+    """
+    res = ts_query.query(QueryString=q)
+    rows = res.get("Rows", [])
+    
+    history = []
+    for row in rows:
+        data = row["Data"]
+        history.append({
+            "time": data[0]["ScalarValue"],
+            "distance": float(data[1]["ScalarValue"])
+        })
+    
+    return {
+        "deviceId": deviceId,
+        "history": history,
+        "count": len(history)
+    }
+
+@app.get("/devices/stats",
+         summary="全デバイスの統計情報を取得",
+         description="登録済みデバイスの統計情報と最新データを一括取得します。")
+def devices_stats():
+    """全デバイスの統計情報を取得"""
+    # 登録済みデバイスの一覧を取得
+    resp = ddb_tbl.scan()
+    items = resp.get("Items", [])
+    
+    claimed_devices = [item for item in items if item.get("claimStatus") == "claimed"]
+    
+    # 各デバイスの最新データを取得
+    device_stats = []
+    for device in claimed_devices:
+        device_id = device["deviceId"]
+        try:
+            latest = latest_metric(device_id)
+            device_stats.append({
+                "deviceId": device_id,
+                "label": device.get("label"),
+                "fieldId": device.get("fieldId"),
+                "lat": float(device["lat"]) if device.get("lat") else None,
+                "lon": float(device["lon"]) if device.get("lon") else None,
+                "latestDistance": latest.distance,
+                "lastUpdate": latest.time,
+                "claimStatus": device.get("claimStatus", "unclaimed")
+            })
+        except Exception as e:
+            # データが取得できない場合はスキップ
+            continue
+    
+    return {
+        "totalDevices": len(items),
+        "claimedDevices": len(claimed_devices),
+        "devices": device_stats
+    }
+
+@app.get("/devices", response_model=List[DeviceItem],
+         summary="デバイス一覧を取得",
+         description="登録されている全デバイスの一覧を取得します。")
 def list_devices():
     resp = ddb_tbl.scan()
     items = resp.get("Items", [])
@@ -127,7 +227,9 @@ def list_devices():
     return out
 
 
-@app.get("/devices/{deviceId}", response_model=DeviceItem)
+@app.get("/devices/{deviceId}", response_model=DeviceItem,
+         summary="デバイス詳細を取得",
+         description="指定されたデバイスIDの詳細情報を取得します。")
 def get_device(deviceId: str):
     r = ddb_tbl.get_item(Key={"deviceId": deviceId})
     it = r.get("Item")
