@@ -15,3 +15,4 @@ export default function DeviceClaimForm({ setPos }: Props) {
   });
   return null; // 地図に描画するものはなし
 }
+

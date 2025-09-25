@@ -6,10 +6,16 @@ export default function Home() {
       <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
         <h1 className="text-4xl font-bold">IoT Water Level Device Registry</h1>
         <p className="text-lg text-gray-600">水位センサーデバイスの登録と管理を行います</p>
-        <Link href="/devices" className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-          デバイス一覧へ
-        </Link>
+        <div className="flex gap-4">
+          <Link href="/devices" className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600">
+            デバイス一覧へ
+          </Link>
+          <Link href="/dashboard" className="bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600">
+            ダッシュボード
+          </Link>
+        </div>
       </main>
     </div>
   );
 }
+

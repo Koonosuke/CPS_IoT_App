@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 type Device = { 
   deviceId: string;
@@ -37,8 +38,18 @@ export default function DeviceList() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">デバイス一覧</h1>
-      <p className="text-gray-600 mb-6">登録したいデバイスを選択してください</p>
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold mb-2">デバイス一覧</h1>
+          <p className="text-gray-600">登録したいデバイスを選択してください</p>
+        </div>
+        <Link 
+          href="/dashboard" 
+          className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600"
+        >
+          ダッシュボード
+        </Link>
+      </div>
       
       <div className="mb-6">
         <label htmlFor="device-select" className="block text-sm font-medium text-gray-700 mb-2">
