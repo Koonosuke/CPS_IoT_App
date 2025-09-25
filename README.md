@@ -96,6 +96,7 @@ npm run dev
 - Uvicorn 0.30.6
 - Boto3 1.34.162
 - Pydantic 2.8.2
+- マルチユーザー対応（DeviceRegistryV2テーブル使用）
 
 ### フロントエンド
 - Next.js 14.2.30

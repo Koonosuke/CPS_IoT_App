@@ -61,3 +61,4 @@ export interface DashboardData {
   claimedDevices: number;
   devices: DeviceStats[];
 }
+

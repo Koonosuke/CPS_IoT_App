@@ -1,7 +1,5 @@
 /**
  * APIクライアント
-/**
- * APIクライアント
  */
 
 import type { Device, DeviceDetail, DeviceHistory, DashboardData, LatestMetric } from '@/types';
