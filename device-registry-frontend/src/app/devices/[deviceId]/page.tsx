@@ -3,29 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-
-type DeviceDetail = {
-  userId: string;
-  deviceId: string;
-  label?: string;
-  fieldId?: string;
-  lat?: number;
-  lon?: number;
-  claimStatus: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type LatestMetric = {
-  deviceId: string;
-  time?: string;
-  distance?: number;
-};
-
-type HistoryData = {
-  time: string;
-  distance: number;
-};
+import { DeviceDetail, LatestMetric, HistoryData, DeviceHistory } from "@/types";
+import { deviceApi } from "@/lib/api";
 
 export default function DeviceDetailPage() {
   const params = useParams();
@@ -45,25 +24,16 @@ export default function DeviceDetailPage() {
         setLoading(true);
         
         // デバイス基本情報を取得
-        const deviceRes = await fetch(`http://localhost:8000/devices/${deviceId}`);
-        if (deviceRes.ok) {
-          const deviceData = await deviceRes.json();
-          setDevice(deviceData);
-        }
+        const deviceData = await deviceApi.getDevice(deviceId);
+        setDevice(deviceData);
 
         // 最新データを取得
-        const latestRes = await fetch(`http://localhost:8000/devices/${deviceId}/latest`);
-        if (latestRes.ok) {
-          const latestData = await latestRes.json();
-          setLatestMetric(latestData);
-        }
+        const latestData = await deviceApi.getLatestMetric(deviceId);
+        setLatestMetric(latestData);
 
         // 履歴データを取得（過去24時間）
-        const historyRes = await fetch(`http://localhost:8000/devices/${deviceId}/history?hours=24`);
-        if (historyRes.ok) {
-          const historyData = await historyRes.json();
-          setHistory(historyData.history || []);
-        }
+        const historyData = await deviceApi.getDeviceHistory(deviceId, 24);
+        setHistory(historyData.history || []);
 
       } catch (err) {
         setError("データの取得に失敗しました");

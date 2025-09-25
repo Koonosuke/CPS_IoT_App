@@ -2,18 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-
-type Device = { 
-  userId: string;
-  deviceId: string;
-  claimStatus?: string;
-  label?: string;
-  fieldId?: string;
-  lat?: number;
-  lon?: number;
-  createdAt: string;
-  updatedAt: string;
-};
+import { Device } from "@/types";
+import { deviceApi } from "@/lib/api";
 
 export default function DeviceList() {
   const [devices, setDevices] = useState<Device[]>([]);
@@ -21,8 +11,7 @@ export default function DeviceList() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:8000/devices")
-      .then(res => res.json())
+    deviceApi.getDevices()
       .then(data => {
         setDevices(data);
         setLoading(false);

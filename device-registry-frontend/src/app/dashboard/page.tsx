@@ -2,25 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-
-type DeviceStats = {
-  userId: string;
-  deviceId: string;
-  label?: string;
-  fieldId?: string;
-  lat?: number;
-  lon?: number;
-  latestDistance?: number;
-  lastUpdate?: string;
-  claimStatus: string;
-};
-
-type DashboardData = {
-  userId: string;
-  totalDevices: number;
-  claimedDevices: number;
-  devices: DeviceStats[];
-};
+import { DeviceStats, DashboardData } from "@/types";
+import { deviceApi } from "@/lib/api";
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -31,13 +14,8 @@ export default function DashboardPage() {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        const response = await fetch("http://localhost:8000/devices/stats");
-        if (response.ok) {
-          const dashboardData = await response.json();
-          setData(dashboardData);
-        } else {
-          setError("データの取得に失敗しました");
-        }
+        const dashboardData = await deviceApi.getStats();
+        setData(dashboardData);
       } catch (err) {
         setError("データの取得に失敗しました");
         console.error(err);
