@@ -5,12 +5,14 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 
 type DeviceDetail = {
+  userId: string;
   deviceId: string;
   label?: string;
   fieldId?: string;
   lat?: number;
   lon?: number;
   claimStatus: string;
+  createdAt: string;
   updatedAt: string;
 };
 

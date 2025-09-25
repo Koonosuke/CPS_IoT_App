@@ -4,9 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type Device = { 
+  userId: string;
   deviceId: string;
   claimStatus?: string;
   label?: string;
+  fieldId?: string;
+  lat?: number;
+  lon?: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export default function DeviceList() {

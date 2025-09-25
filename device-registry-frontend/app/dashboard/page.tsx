@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type DeviceStats = {
+  userId: string;
   deviceId: string;
   label?: string;
   fieldId?: string;
@@ -15,6 +16,7 @@ type DeviceStats = {
 };
 
 type DashboardData = {
+  userId: string;
   totalDevices: number;
   claimedDevices: number;
   devices: DeviceStats[];
