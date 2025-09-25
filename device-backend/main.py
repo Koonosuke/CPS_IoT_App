@@ -10,7 +10,7 @@ from typing import List
 
 # ---------- 環境 ----------
 AWS_REGION   = os.getenv("AWS_REGION", "us-east-1")
-REGISTRY_TBL = os.getenv("REGISTRY_TABLE", "DeviceRegistry")
+REGISTRY_TBL = os.getenv("REGISTRY_TABLE", "DeviceRegistryV2")
 TS_DB        = os.getenv("TS_DB", "iot_waterlevel_db")
 TS_TABLE     = os.getenv("TS_TABLE", "distance_table")
 
@@ -25,12 +25,14 @@ class ClaimRequest(BaseModel):
     lon: float
 
 class DeviceItem(BaseModel):
+    userId: str
     deviceId: str
     label: Optional[str] = None
     fieldId: Optional[str] = None
     lat: Optional[float] = None
     lon: Optional[float] = None
     claimStatus: str
+    createdAt: str
     updatedAt: str
 
 class LatestMetric(BaseModel):
@@ -86,7 +88,10 @@ def now_utc_iso():
           summary="デバイスの位置を登録",
           description="指定されたデバイスIDの位置情報（緯度・経度）を登録します。")
 def claim_device(body: ClaimRequest):
-    r = ddb_tbl.get_item(Key={"deviceId": body.deviceId})
+    # 仮のユーザーID（後でCognito認証に置き換え）
+    user_id = "user-001"
+    
+    r = ddb_tbl.get_item(Key={"userId": user_id, "deviceId": body.deviceId})
     it = r.get("Item")
     if not it:
         raise HTTPException(404, "device not found")
@@ -94,7 +99,7 @@ def claim_device(body: ClaimRequest):
         raise HTTPException(409, "already claimed")
 
     ddb_tbl.update_item(
-        Key={"deviceId": body.deviceId},
+        Key={"userId": user_id, "deviceId": body.deviceId},
         UpdateExpression="SET lat=:lat, lon=:lon, claimStatus=:c, updatedAt=:u",
         ExpressionAttributeValues={
             ":lat": Decimal(str(body.lat)),
@@ -107,12 +112,14 @@ def claim_device(body: ClaimRequest):
     )
 
     return DeviceItem(
+        userId=user_id,
         deviceId=body.deviceId,
         label=it.get("label"),
         fieldId=it.get("fieldId"),
         lat=body.lat,
         lon=body.lon,
         claimStatus="claimed",
+        createdAt=it.get("createdAt", now_utc_iso()),
         updatedAt=now_utc_iso(),
     )
 
@@ -174,8 +181,14 @@ def device_history(deviceId: str, hours: int = 24, limit: int = 100):
          description="登録済みデバイスの統計情報と最新データを一括取得します。")
 def devices_stats():
     """全デバイスの統計情報を取得"""
-    # 登録済みデバイスの一覧を取得
-    resp = ddb_tbl.scan()
+    # 仮のユーザーID（後でCognito認証に置き換え）
+    user_id = "user-001"
+    
+    # ユーザー固有のデバイス一覧を取得
+    resp = ddb_tbl.query(
+        KeyConditionExpression="userId = :user_id",
+        ExpressionAttributeValues={":user_id": user_id}
+    )
     items = resp.get("Items", [])
     
     claimed_devices = [item for item in items if item.get("claimStatus") == "claimed"]
@@ -187,6 +200,7 @@ def devices_stats():
         try:
             latest = latest_metric(device_id)
             device_stats.append({
+                "userId": device["userId"],
                 "deviceId": device_id,
                 "label": device.get("label"),
                 "fieldId": device.get("fieldId"),
@@ -201,6 +215,7 @@ def devices_stats():
             continue
     
     return {
+        "userId": user_id,
         "totalDevices": len(items),
         "claimedDevices": len(claimed_devices),
         "devices": device_stats
@@ -210,11 +225,18 @@ def devices_stats():
          summary="デバイス一覧を取得",
          description="登録されている全デバイスの一覧を取得します。")
 def list_devices():
-    resp = ddb_tbl.scan()
+    # 仮のユーザーID（後でCognito認証に置き換え）
+    user_id = "user-001"
+    
+    resp = ddb_tbl.query(
+        KeyConditionExpression="userId = :user_id",
+        ExpressionAttributeValues={":user_id": user_id}
+    )
     items = resp.get("Items", [])
     out = []
     for it in items:
         out.append(DeviceItem(
+            userId=it["userId"],
             deviceId=it["deviceId"],
             label=it.get("label"),
             fieldId=it.get("fieldId"),
@@ -222,6 +244,7 @@ def list_devices():
             lat=float(it["lat"]) if it.get("lat") is not None else None,
             lon=float(it["lon"]) if it.get("lon") is not None else None,
             claimStatus=it.get("claimStatus","unclaimed"),
+            createdAt=it.get("createdAt", now_utc_iso()),
             updatedAt=it.get("updatedAt", now_utc_iso()),
         ))
     return out
@@ -231,17 +254,22 @@ def list_devices():
          summary="デバイス詳細を取得",
          description="指定されたデバイスIDの詳細情報を取得します。")
 def get_device(deviceId: str):
-    r = ddb_tbl.get_item(Key={"deviceId": deviceId})
+    # 仮のユーザーID（後でCognito認証に置き換え）
+    user_id = "user-001"
+    
+    r = ddb_tbl.get_item(Key={"userId": user_id, "deviceId": deviceId})
     it = r.get("Item")
     if not it:
         raise HTTPException(404, "device not found")
 
     return DeviceItem(
+        userId=it["userId"],
         deviceId=it["deviceId"],
         label=it.get("label"),
         fieldId=it.get("fieldId"),
         lat=float(it["lat"]) if it.get("lat") is not None else None,
         lon=float(it["lon"]) if it.get("lon") is not None else None,
         claimStatus=it.get("claimStatus", "unclaimed"),
+        createdAt=it.get("createdAt", now_utc_iso()),
         updatedAt=it.get("updatedAt", now_utc_iso()),
     )
