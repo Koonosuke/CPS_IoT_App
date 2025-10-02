@@ -5,10 +5,13 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { DeviceDetail, LatestMetric, HistoryData, DeviceHistory } from "@/types";
 import { deviceApi } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { AuthGuard } from "@/components/AuthGuard";
 
 export default function DeviceDetailPage() {
   const params = useParams();
   const deviceId = params.deviceId as string;
+  const { getAccessToken } = useAuth();
   
   const [device, setDevice] = useState<DeviceDetail | null>(null);
   const [latestMetric, setLatestMetric] = useState<LatestMetric | null>(null);
@@ -19,12 +22,15 @@ export default function DeviceDetailPage() {
   useEffect(() => {
     if (!deviceId) return;
 
+    const token = getAccessToken();
+    if (!token) return;
+
     const fetchDeviceData = async () => {
       try {
         setLoading(true);
         
         // デバイス基本情報を取得
-        const deviceData = await deviceApi.getDevice(deviceId);
+        const deviceData = await deviceApi.getDevice(deviceId, token);
         setDevice(deviceData);
 
         // 最新データを取得
@@ -44,34 +50,38 @@ export default function DeviceDetailPage() {
     };
 
     fetchDeviceData();
-  }, [deviceId]);
+  }, [deviceId, getAccessToken]);
 
   if (loading) {
     return (
-      <div className="p-6 max-w-6xl mx-auto">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2 mb-8"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="h-64 bg-gray-200 rounded"></div>
-            <div className="h-64 bg-gray-200 rounded"></div>
+      <AuthGuard>
+        <div className="p-6 max-w-6xl mx-auto">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2 mb-8"></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="h-64 bg-gray-200 rounded"></div>
+              <div className="h-64 bg-gray-200 rounded"></div>
+            </div>
           </div>
         </div>
-      </div>
+      </AuthGuard>
     );
   }
 
   if (error || !device) {
     return (
-      <div className="p-6 max-w-6xl mx-auto">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-          <h1 className="text-xl font-bold text-red-800 mb-2">エラー</h1>
-          <p className="text-red-600 mb-4">{error || "デバイスが見つかりません"}</p>
-          <Link href="/devices" className="text-blue-500 hover:text-blue-700">
-            ← デバイス一覧に戻る
-          </Link>
+      <AuthGuard>
+        <div className="p-6 max-w-6xl mx-auto">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+            <h1 className="text-xl font-bold text-red-800 mb-2">エラー</h1>
+            <p className="text-red-600 mb-4">{error || "デバイスが見つかりません"}</p>
+            <Link href="/devices" className="text-blue-500 hover:text-blue-700">
+              ← デバイス一覧に戻る
+            </Link>
+          </div>
         </div>
-      </div>
+      </AuthGuard>
     );
   }
 
@@ -86,7 +96,8 @@ export default function DeviceDetailPage() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <AuthGuard>
+      <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-6">
         <Link href="/devices" className="text-blue-500 hover:text-blue-700 mb-4 inline-block">
           ← デバイス一覧に戻る
@@ -188,5 +199,6 @@ export default function DeviceDetailPage() {
         </div>
       </div>
     </div>
+    </AuthGuard>
   );
 }

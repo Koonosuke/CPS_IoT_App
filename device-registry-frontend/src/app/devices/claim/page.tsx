@@ -38,7 +38,7 @@ export default function ClaimPage() {
   // デバイスが既に登録されていれば初期位置を取得
   useEffect(() => {
     if (!deviceId) return;
-    fetch(`http://localhost:8000/devices/${deviceId}`)
+    fetch(`http://localhost:8003/devices/${deviceId}`)
       .then((res) => (res.status === 404 ? null : res.json()))
       .then((data) => {
         if (data?.lat && data?.lon) {
@@ -50,7 +50,7 @@ export default function ClaimPage() {
 
   const handleRegister = async () => {
     if (!position) return;
-    const res = await fetch("http://localhost:8000/devices/claim", {
+    const res = await fetch("http://localhost:8003/devices/claim", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

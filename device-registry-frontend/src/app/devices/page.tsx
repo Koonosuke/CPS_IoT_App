@@ -4,14 +4,20 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Device } from "@/types";
 import { deviceApi } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { AuthGuard } from "@/components/AuthGuard";
 
 export default function DeviceList() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
+  const { getAccessToken } = useAuth();
 
   useEffect(() => {
-    deviceApi.getDevices()
+    const token = getAccessToken();
+    if (!token) return;
+
+    deviceApi.getDevices(token)
       .then(data => {
         setDevices(data);
         setLoading(false);
@@ -20,19 +26,22 @@ export default function DeviceList() {
         console.error("デバイス一覧の取得に失敗しました:", err);
         setLoading(false);
       });
-  }, []);
+  }, [getAccessToken]);
 
   if (loading) {
     return (
-      <div className="p-6 max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-4">デバイス一覧</h1>
-        <p>読み込み中...</p>
-      </div>
+      <AuthGuard>
+        <div className="p-6 max-w-4xl mx-auto">
+          <h1 className="text-2xl font-bold mb-4">デバイス一覧</h1>
+          <p>読み込み中...</p>
+        </div>
+      </AuthGuard>
     );
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <AuthGuard>
+      <div className="p-6 max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold mb-2">デバイス一覧</h1>
@@ -80,6 +89,7 @@ export default function DeviceList() {
           <p className="text-yellow-800">デバイスが見つかりません。バックエンドが起動していることを確認してください。</p>
         </div>
       )}
-    </div>
+      </div>
+    </AuthGuard>
   );
 }

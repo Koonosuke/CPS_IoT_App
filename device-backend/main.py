@@ -1,11 +1,15 @@
 import os, time
 from decimal import Decimal
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import boto3
 from typing import List
+
+# 認証モジュールのインポート
+from app.auth.endpoints import router as auth_router
+from app.auth.dependencies import get_current_user_id
 
 
 # ---------- 環境 ----------
@@ -79,17 +83,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 認証ルーターを追加
+app.include_router(auth_router, prefix="/api/v1")
+
 def now_utc_iso():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 # ---------- エンドポイント ----------
 
-@app.post("/devices/claim", response_model=DeviceItem, 
+@app.post("/devices/claim", response_model=DeviceItem,
           summary="デバイスの位置を登録",
           description="指定されたデバイスIDの位置情報（緯度・経度）を登録します。")
-def claim_device(body: ClaimRequest):
-    # 仮のユーザーID（後でCognito認証に置き換え）
-    user_id = "user-001"
+def claim_device(body: ClaimRequest, user_id: str = Depends(get_current_user_id)):
+    # Cognito認証からユーザーIDを取得
     
     r = ddb_tbl.get_item(Key={"userId": user_id, "deviceId": body.deviceId})
     it = r.get("Item")
@@ -224,15 +230,34 @@ def devices_stats():
 @app.get("/devices", response_model=List[DeviceItem],
          summary="デバイス一覧を取得",
          description="登録されている全デバイスの一覧を取得します。")
-def list_devices():
-    # 仮のユーザーID（後でCognito認証に置き換え）
-    user_id = "user-001"
+def list_devices(user_id: str = Depends(get_current_user_id)):
+    # Cognito認証からユーザーIDを取得
+    print(f"DEBUG: Current user_id: {user_id}")
     
     resp = ddb_tbl.query(
         KeyConditionExpression="userId = :user_id",
         ExpressionAttributeValues={":user_id": user_id}
     )
     items = resp.get("Items", [])
+    print(f"DEBUG: Found {len(items)} devices for user {user_id}")
+    
+    # デバイスが存在しない場合は、テスト用のデバイスを作成
+    if not items:
+        print(f"DEBUG: No devices found, creating test device for user {user_id}")
+        test_device_id = "440525060026078"  # フロントエンドで使用されているデバイスID
+        test_device = {
+            "userId": user_id,
+            "deviceId": test_device_id,
+            "label": "テストデバイス",
+            "fieldId": "field-001",
+            "claimStatus": "unclaimed",
+            "createdAt": now_utc_iso(),
+            "updatedAt": now_utc_iso()
+        }
+        ddb_tbl.put_item(Item=test_device)
+        items = [test_device]
+        print(f"DEBUG: Created test device: {test_device}")
+    
     out = []
     for it in items:
         out.append(DeviceItem(
@@ -253,14 +278,23 @@ def list_devices():
 @app.get("/devices/{deviceId}", response_model=DeviceItem,
          summary="デバイス詳細を取得",
          description="指定されたデバイスIDの詳細情報を取得します。")
-def get_device(deviceId: str):
-    # 仮のユーザーID（後でCognito認証に置き換え）
-    user_id = "user-001"
+def get_device(deviceId: str, user_id: str = Depends(get_current_user_id)):
+    # Cognito認証からユーザーIDを取得
+    print(f"DEBUG: Looking for deviceId={deviceId}, userId={user_id}")
     
     r = ddb_tbl.get_item(Key={"userId": user_id, "deviceId": deviceId})
     it = r.get("Item")
+    print(f"DEBUG: DynamoDB response: {r}")
+    
     if not it:
-        raise HTTPException(404, "device not found")
+        # デバッグ用: ユーザーの全デバイスを確認
+        resp = ddb_tbl.query(
+            KeyConditionExpression="userId = :user_id",
+            ExpressionAttributeValues={":user_id": user_id}
+        )
+        user_devices = resp.get("Items", [])
+        print(f"DEBUG: User has {len(user_devices)} devices: {[d['deviceId'] for d in user_devices]}")
+        raise HTTPException(404, f"device not found for userId={user_id}, deviceId={deviceId}")
 
     return DeviceItem(
         userId=it["userId"],

@@ -3,17 +3,14 @@
  */
 
 export interface User {
-  userId: string;
+  sub: string;  // Cognito User ID
   email: string;
-  username: string;
-  firstName?: string;
-  lastName?: string;
-  organization?: string;
-  role: 'admin' | 'user';
-  createdAt: string;
-  updatedAt: string;
-  isActive: boolean;
-  cognitoSub?: string;
+  given_name?: string;
+  family_name?: string;
+  username?: string;
+  groups: string[];
+  token_use?: string;
+  client_id?: string;
 }
 
 export interface LoginRequest {
@@ -21,20 +18,49 @@ export interface LoginRequest {
   password: string;
 }
 
-export interface RegisterRequest {
+export interface SignUpRequest {
   email: string;
   password: string;
-  username: string;
-  firstName?: string;
-  lastName?: string;
-  organization?: string;
+  given_name: string;
+  family_name: string;
 }
 
-export interface AuthResponse {
-  accessToken: string;
-  refreshToken: string;
-  idToken: string;
-  user: User;
+export interface LoginResponse {
+  access_token: string;
+  id_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+export interface SignUpResponse {
+  user_id: string;
+  email: string;
+  confirmation_required: boolean;
+}
+
+export interface ConfirmSignUpRequest {
+  email: string;
+  confirmation_code: string;
+}
+
+export interface RefreshTokenRequest {
+  refresh_token: string;
+}
+
+export interface ChangePasswordRequest {
+  old_password: string;
+  new_password: string;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ConfirmForgotPasswordRequest {
+  email: string;
+  confirmation_code: string;
+  new_password: string;
 }
 
 export interface AuthState {
@@ -42,5 +68,10 @@ export interface AuthState {
   user: User | null;
   loading: boolean;
   error: string | null;
+  tokens: {
+    accessToken: string | null;
+    idToken: string | null;
+    refreshToken: string | null;
+  } | null;
 }
 
