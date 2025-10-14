@@ -103,66 +103,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const isTokenExpired = (token: string): boolean => {
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
-      const currentTime = Math.floor(Date.now() / 10000);
+      const currentTime = Math.floor(Date.now() / 1000); // 修正: 10000 → 1000
       return payload.exp < currentTime;
     } catch {
       return true;
     }
   };
 
-  // ローカルストレージからトークンを復元
+  // 認証状態を初期化（HttpOnly Cookieを使用）
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        const tokens = localStorage.getItem('auth_tokens');
-      
-        if (tokens) {
-          const parsedTokens = JSON.parse(tokens);
-    
-          if (parsedTokens.idToken && !isTokenExpired(parsedTokens.idToken)) {
-            // IDトークンからユーザー情報をデコード（バックエンドの検証をスキップ）
-          
-            try {
-              const payload = JSON.parse(atob(parsedTokens.idToken.split('.')[1]));
-              const user = {
-                sub: payload.sub,
-                email: payload.email,
-                given_name: payload.given_name ? String(payload.given_name) : undefined,
-                family_name: payload.family_name ? String(payload.family_name) : undefined,
-                username: payload['cognito:username'],
-                groups: payload['cognito:groups'] || [],
-                token_use: payload.token_use,
-                client_id: payload.aud,
-              };
-            
-              dispatch({
-                type: 'AUTH_SUCCESS',
-                payload: {
-                  user,
-                  tokens: parsedTokens,
-                },
-              });
-   
-            } catch (decodeError) {
-          
-              localStorage.removeItem('auth_tokens');
-              dispatch({ type: 'AUTH_FAILURE', payload: 'トークンの解析に失敗しました' });
-            }
-          } else {
-            // トークンが無効または期限切れ
-            console.log('DEBUG: Token is invalid or expired, removing from localStorage');
-            localStorage.removeItem('auth_tokens');
-            dispatch({ type: 'AUTH_FAILURE', payload: 'トークンの有効期限が切れています' });
-          }
-        } else {
-          // トークンが存在しない場合
-          console.log('DEBUG: No tokens found, user is not authenticated');
-          dispatch({ type: 'AUTH_FAILURE', payload: '' });
-        }
+        // HttpOnly Cookieから認証状態を確認
+        const user = await authApi.getMe();
+        dispatch({
+          type: 'AUTH_SUCCESS',
+          payload: {
+            user,
+            tokens: null, // HttpOnly Cookieを使用するため、フロントエンドではトークンを保持しない
+          },
+        });
       } catch (error) {
-        console.error('DEBUG: Failed to initialize auth:', error);
-        localStorage.removeItem('auth_tokens');
-        dispatch({ type: 'AUTH_FAILURE', payload: '認証の初期化に失敗しました' });
+        // 認証されていない場合
+        dispatch({ type: 'AUTH_FAILURE', payload: '' });
       }
     };
 
@@ -173,22 +136,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const login = async (request: LoginRequest) => {
     try {
       dispatch({ type: 'AUTH_START' });
-      const response = await authApi.login(request);
       
-      // トークンをローカルストレージに保存
-      const tokens = {
-        accessToken: response.access_token,
-        idToken: response.id_token,
-        refreshToken: response.refresh_token,
-      };
-      localStorage.setItem('auth_tokens', JSON.stringify(tokens));
-
+      // HttpOnly Cookieを使用してログイン
+      await authApi.login(request);
+      
       // ユーザー情報を取得
-      const user = await authApi.getMe(response.access_token);
+      const user = await authApi.getMe();
       
       dispatch({
         type: 'AUTH_SUCCESS',
-        payload: { user, tokens },
+        payload: { 
+          user, 
+          tokens: null // HttpOnly Cookieを使用するため、フロントエンドではトークンを保持しない
+        },
       });
     } catch (error) {
       const message = error instanceof AuthApiError ? error.message : 'ログインに失敗しました';
@@ -224,9 +184,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   // ログアウト
-  const logout = () => {
-    localStorage.removeItem('auth_tokens');
-    dispatch({ type: 'AUTH_LOGOUT' });
+  const logout = async () => {
+    try {
+      // サーバー側でCookieを削除
+      await authApi.logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      dispatch({ type: 'AUTH_LOGOUT' });
+    }
   };
 
   // エラークリア
@@ -234,9 +200,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     dispatch({ type: 'AUTH_CLEAR_ERROR' });
   };
 
-  // アクセストークン取得
+  // アクセストークン取得（HttpOnly Cookieを使用するため、常にnullを返す）
   const getAccessToken = (): string | null => {
-    return state.tokens?.accessToken || null;
+    // HttpOnly Cookieを使用するため、フロントエンドではトークンにアクセスできない
+    return null;
   };
 
   const value: AuthContextType = {

@@ -35,14 +35,35 @@ class AuthApiClient {
     return `${API_BASE_URL}${API_PREFIX}${path}`;
   }
 
-  private async request<T>(method: string, path: string, data?: any, token?: string): Promise<T> {
+  private async getCsrfToken(): Promise<string> {
+    const response = await fetch(this.getUrl('/auth/csrf-token'), {
+      method: 'GET',
+      credentials: 'include',
+    });
+    
+    if (!response.ok) {
+      throw new AuthApiError('CSRFトークンの取得に失敗しました', response.status);
+    }
+    
+    const data = await response.json();
+    return data.csrf_token;
+  }
+
+  private async request<T>(method: string, path: string, data?: any, requireCsrf: boolean = true): Promise<T> {
     const url = this.getUrl(path);
+    
+    let csrfToken: string | undefined;
+    if (requireCsrf && method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+      csrfToken = await this.getCsrfToken();
+    }
+    
     const options: RequestInit = {
       method,
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
+        ...(csrfToken && { 'X-CSRF-Token': csrfToken }),
       },
+      credentials: 'include', // HttpOnly Cookieを含める
       body: data ? JSON.stringify(data) : undefined,
     };
 
@@ -62,7 +83,7 @@ class AuthApiClient {
 
   // ログイン
   login(request: LoginRequest): Promise<LoginResponse> {
-    return this.request<LoginResponse>('POST', '/auth/login', request);
+    return this.request<LoginResponse>('POST', '/auth/login', request, false); // ログイン時はCSRF不要
   }
 
   // ユーザー登録
@@ -81,8 +102,8 @@ class AuthApiClient {
   }
 
   // パスワード変更
-  changePassword(request: ChangePasswordRequest, token: string): Promise<{ message: string }> {
-    return this.request<{ message: string }>('POST', '/auth/change-password', request, token);
+  changePassword(request: ChangePasswordRequest): Promise<{ message: string }> {
+    return this.request<{ message: string }>('POST', '/auth/change-password', request);
   }
 
   // パスワードリセット
@@ -96,8 +117,13 @@ class AuthApiClient {
   }
 
   // 現在のユーザー情報取得
-  getMe(token: string): Promise<User> {
-    return this.request<User>('GET', '/auth/me', undefined, token);
+  getMe(): Promise<User> {
+    return this.request<User>('GET', '/auth/me', undefined, false);
+  }
+
+  // ログアウト
+  logout(): Promise<{ message: string }> {
+    return this.request<{ message: string }>('POST', '/auth/logout', undefined);
   }
 }
 
