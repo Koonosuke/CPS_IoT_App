@@ -11,13 +11,9 @@ export default function DeviceList() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
-  const { getAccessToken } = useAuth();
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token) return;
-
-    deviceApi.getDevices(token)
+    deviceApi.getDevices()
       .then(data => {
         setDevices(data);
         setLoading(false);
@@ -26,7 +22,7 @@ export default function DeviceList() {
         console.error("デバイス一覧の取得に失敗しました:", err);
         setLoading(false);
       });
-  }, [getAccessToken]);
+  }, []);
 
   if (loading) {
     return (

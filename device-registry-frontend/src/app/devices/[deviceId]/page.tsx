@@ -11,7 +11,6 @@ import { AuthGuard } from "@/components/AuthGuard";
 export default function DeviceDetailPage() {
   const params = useParams();
   const deviceId = params.deviceId as string;
-  const { getAccessToken } = useAuth();
   
   const [device, setDevice] = useState<DeviceDetail | null>(null);
   const [latestMetric, setLatestMetric] = useState<LatestMetric | null>(null);
@@ -22,15 +21,12 @@ export default function DeviceDetailPage() {
   useEffect(() => {
     if (!deviceId) return;
 
-    const token = getAccessToken();
-    if (!token) return;
-
     const fetchDeviceData = async () => {
       try {
         setLoading(true);
         
         // デバイス基本情報を取得
-        const deviceData = await deviceApi.getDevice(deviceId, token);
+        const deviceData = await deviceApi.getDevice(deviceId);
         setDevice(deviceData);
 
         // 最新データを取得
@@ -50,7 +46,7 @@ export default function DeviceDetailPage() {
     };
 
     fetchDeviceData();
-  }, [deviceId, getAccessToken]);
+  }, [deviceId]);
 
   if (loading) {
     return (
