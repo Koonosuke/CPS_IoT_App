@@ -20,7 +20,7 @@ cd device-backend
 pip install -r requirements.txt
 
 # サーバーを起動
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8003
 ```
 
 バックエンドが起動すると、以下のURLでアクセスできます：
