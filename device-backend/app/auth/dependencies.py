@@ -1,7 +1,7 @@
 """
 認証依存関係
 """
-from fastapi import HTTPException, Depends, status
+from fastapi import HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Any, Optional
 
@@ -13,13 +13,15 @@ security = HTTPBearer()
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
 ) -> Dict[str, Any]:
     """
-    現在のユーザー情報を取得
+    現在のユーザー情報を取得（CookieまたはBearer Tokenから）
     
     Args:
-        credentials: HTTP Bearer認証情報
+        request: FastAPI Request オブジェクト
+        credentials: HTTP Bearer認証情報（オプショナル）
         
     Returns:
         ユーザー情報辞書
@@ -27,8 +29,23 @@ async def get_current_user(
     Raises:
         HTTPException: 認証エラー時
     """
-    try:
+    token = None
+    
+    # まずCookieからトークンを取得
+    access_token = request.cookies.get('access_token')
+    if access_token:
+        token = access_token
+    # Cookieにない場合はBearer Tokenを試す
+    elif credentials:
         token = credentials.credentials
+    
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="認証トークンが見つかりません"
+        )
+    
+    try:
         user_info = jwt_validator.get_user_info(token)
         
         # トークンの種類をチェック（IDトークンまたはアクセストークン）

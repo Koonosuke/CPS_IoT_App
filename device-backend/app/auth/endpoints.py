@@ -2,7 +2,8 @@
 認証エンドポイント
 """
 import boto3
-from fastapi import APIRouter, HTTPException, status, Depends
+import secrets
+from fastapi import APIRouter, HTTPException, status, Depends, Response
 from botocore.exceptions import ClientError
 from typing import Dict, Any
 
@@ -21,7 +22,7 @@ cognito_client = boto3.client('cognito-idp', region_name=cognito_config.region)
 
 
 @router.post("/login", response_model=LoginResponse, summary="ログイン")
-async def login(request: LoginRequest):
+async def login(request: LoginRequest, response: Response):
     """
     ユーザーログイン
     
@@ -29,7 +30,7 @@ async def login(request: LoginRequest):
     - **password**: パスワード
     """
     try:
-        response = cognito_client.initiate_auth(
+        cognito_response = cognito_client.initiate_auth(
             ClientId=cognito_config.client_id,
             AuthFlow='USER_PASSWORD_AUTH',
             AuthParameters={
@@ -38,7 +39,38 @@ async def login(request: LoginRequest):
             }
         )
         
-        auth_result = response['AuthenticationResult']
+        auth_result = cognito_response['AuthenticationResult']
+        
+        # HttpOnly Cookieにトークンを設定
+        response.set_cookie(
+            key="access_token",
+            value=auth_result['AccessToken'],
+            httponly=True,
+            secure=True,  # HTTPS環境でのみ送信
+            samesite="strict",  # CSRF保護
+            max_age=auth_result['ExpiresIn'],
+            path="/"
+        )
+        
+        response.set_cookie(
+            key="id_token",
+            value=auth_result['IdToken'],
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=auth_result['ExpiresIn'],
+            path="/"
+        )
+        
+        response.set_cookie(
+            key="refresh_token",
+            value=auth_result['RefreshToken'],
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=30 * 24 * 60 * 60,  # 30日
+            path="/"
+        )
         
         return LoginResponse(
             access_token=auth_result['AccessToken'],
@@ -295,5 +327,42 @@ async def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
         "username": current_user.get('username'),
         "groups": current_user.get('groups', [])
     }
+
+
+@router.post("/logout", summary="ログアウト")
+async def logout(response: Response):
+    """
+    ユーザーログアウト（Cookieを削除）
+    """
+    # HttpOnly Cookieを削除
+    response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key="id_token", path="/")
+    response.delete_cookie(key="refresh_token", path="/")
+    response.delete_cookie(key="csrf_token", path="/")
+    
+    return {"message": "ログアウトしました"}
+
+
+@router.get("/csrf-token", summary="CSRFトークン取得")
+async def get_csrf_token(response: Response):
+    """
+    CSRFトークンを生成してCookieに設定
+    """
+    csrf_token = secrets.token_urlsafe(32)
+    
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=3600,  # 1時間
+        path="/"
+    )
+    
+    return {"csrf_token": csrf_token}
+
+
+
 
 

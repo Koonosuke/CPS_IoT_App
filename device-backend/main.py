@@ -1,7 +1,7 @@
 import os, time
 from decimal import Decimal
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import boto3
@@ -73,13 +73,73 @@ app = FastAPI(
     },
 )
 
+# セキュリティヘッダーミドルウェア
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    
+    # セキュリティヘッダーを追加
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    
+    # HTTPS環境でのみ追加
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    
+    return response
+
+# CSRF保護ミドルウェア
+@app.middleware("http")
+async def csrf_protection_middleware(request: Request, call_next):
+    # GET、HEAD、OPTIONSリクエストは除外
+    if request.method in ["GET", "HEAD", "OPTIONS"]:
+        return await call_next(request)
+    
+    # 認証エンドポイントは除外（ログイン時はCSRFトークンがまだない）
+    if request.url.path.startswith("/api/v1/auth/login"):
+        return await call_next(request)
+    
+    # CSRFトークンをチェック
+    csrf_token_header = request.headers.get("X-CSRF-Token")
+    csrf_token_cookie = request.cookies.get("csrf_token")
+    
+    if not csrf_token_header or not csrf_token_cookie:
+        return Response(
+            content='{"detail": "CSRF token missing"}',
+            status_code=403,
+            media_type="application/json"
+        )
+    
+    if csrf_token_header != csrf_token_cookie:
+        return Response(
+            content='{"detail": "CSRF token mismatch"}',
+            status_code=403,
+            media_type="application/json"
+        )
+    
+    return await call_next(request)
+
 # CORS
-origins = [o.strip() for o in os.getenv("CORS_ORIGINS","*").split(",")]
+origins = [
+    "http://localhost:3000",  # Next.js開発サーバー
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
+
+# 環境変数で追加のオリジンを指定可能
+env_origins = os.getenv("CORS_ORIGINS", "")
+if env_origins:
+    origins.extend([o.strip() for o in env_origins.split(",")])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins if origins != ["*"] else ["*"],
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
