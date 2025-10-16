@@ -5,6 +5,7 @@
 import type { Device, DeviceDetail, DeviceHistory, DashboardData, LatestMetric } from '@/types';
 
 const API_BASE_URL: string = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8003';
+const API_PREFIX: string = process.env.NEXT_PUBLIC_API_PREFIX || '/api/v1';
 
 class ApiError extends Error {
   constructor(
@@ -17,12 +18,38 @@ class ApiError extends Error {
   }
 }
 
+// CSRFトークンを取得する関数
+async function getCsrfToken(): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}${API_PREFIX}/auth/csrf-token`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  
+  if (!response.ok) {
+    throw new ApiError('CSRFトークンの取得に失敗しました', response.status);
+  }
+  
+  const data = await response.json();
+  return data.csrf_token;
+}
+
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
+  
+  // POST/PUT/DELETEリクエストの場合はCSRFトークンを取得
+  let csrfToken: string | undefined;
+  if (options?.method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method.toUpperCase())) {
+    try {
+      csrfToken = await getCsrfToken();
+    } catch (error) {
+      console.warn('CSRFトークンの取得に失敗しました:', error);
+    }
+  }
   
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
+      ...(csrfToken && { 'X-CSRF-Token': csrfToken }),
       ...options?.headers,
     },
     credentials: 'include', // HttpOnly Cookieを含める
@@ -43,9 +70,23 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
 }
 
 export const deviceApi = {
-  // デバイス一覧取得
+  // ユーザーのデバイス一覧取得
   getDevices: (): Promise<Device[]> => 
     fetchApi<Device[]>('/devices'),
+
+  // 利用可能なデバイス一覧取得
+  getAvailableDevices: (): Promise<Array<{
+    deviceId: string;
+    label: string;
+    description: string;
+    location: string;
+  }>> => 
+    fetchApi<Array<{
+      deviceId: string;
+      label: string;
+      description: string;
+      location: string;
+    }>>('/devices/available'),
 
   // デバイス詳細取得
   getDevice: (deviceId: string): Promise<DeviceDetail> => 
