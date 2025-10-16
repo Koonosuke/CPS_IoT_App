@@ -3,6 +3,8 @@
 """
 import boto3
 import secrets
+import os
+import time
 from fastapi import APIRouter, HTTPException, status, Depends, Response
 from botocore.exceptions import ClientError
 from typing import Dict, Any
@@ -19,6 +21,14 @@ router = APIRouter(prefix="/auth", tags=["認証"])
 
 # Cognitoクライアント
 cognito_client = boto3.client('cognito-idp', region_name=cognito_config.region)
+
+# DynamoDB接続
+dynamodb = boto3.resource("dynamodb", region_name=cognito_config.region)
+USER_TBL = os.getenv("USER_TABLE", "UserRegistry")
+user_tbl = dynamodb.Table(USER_TBL)
+
+def now_utc_iso():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 @router.post("/login", response_model=LoginResponse, summary="ログイン")
@@ -109,6 +119,7 @@ async def signup(request: SignUpRequest):
     - **family_name**: 姓
     """
     try:
+        # 1. Cognitoにユーザー登録
         response = cognito_client.sign_up(
             ClientId=cognito_config.client_id,
             Username=request.email,
@@ -119,6 +130,27 @@ async def signup(request: SignUpRequest):
                 {'Name': 'family_name', 'Value': request.family_name}
             ]
         )
+        
+        # 2. UserRegistryテーブルにユーザー情報を保存
+        user_item = {
+            "userId": response['UserSub'],
+            "email": request.email,
+            "firstName": request.given_name,
+            "lastName": request.family_name,
+            "username": request.email.split('@')[0],  # メールの@より前をユーザー名に
+            "organization": "未設定",
+            "role": "user",
+            "createdAt": now_utc_iso(),
+            "updatedAt": now_utc_iso(),
+            "isActive": True
+        }
+        
+        try:
+            user_tbl.put_item(Item=user_item)
+            print(f"DEBUG: User registered in UserRegistry: {response['UserSub']}")
+        except Exception as db_error:
+            print(f"WARNING: Failed to write to UserRegistry: {str(db_error)}")
+            # UserRegistryへの書き込みに失敗してもCognito登録は成功しているので続行
         
         return SignUpResponse(
             user_id=response['UserSub'],
