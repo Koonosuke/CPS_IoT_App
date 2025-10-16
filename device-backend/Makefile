@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint format clean
+.PHONY: help install dev test lint format clean setup-device-master
 
 help: ## このヘルプを表示
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -33,3 +33,6 @@ docker-build: ## Dockerイメージをビルド
 
 docker-run: ## Dockerコンテナを実行
 	docker run -p 8000:8000 iot-waterlevel-api
+
+setup-device-master: ## DeviceMasterテーブルを作成し、初期データを投入
+	python setup_device_master.py
