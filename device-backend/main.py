@@ -209,7 +209,10 @@ def claim_device(body: ClaimRequest, user_id: str = Depends(get_current_user_id)
         # 6. DeviceMasterテーブルのステータスを更新
         device_master_tbl.update_item(
             Key={"deviceId": body.deviceId},
-            UpdateExpression="SET status = :status, updatedAt = :updated_at",
+            UpdateExpression="SET #status = :status, updatedAt = :updated_at",
+            ExpressionAttributeNames={
+                "#status": "status"
+            },
             ExpressionAttributeValues={
                 ":status": "claimed",
                 ":updated_at": now_utc_iso()
