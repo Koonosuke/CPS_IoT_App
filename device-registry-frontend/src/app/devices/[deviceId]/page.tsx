@@ -72,8 +72,8 @@ export default function DeviceDetailPage() {
           <div className="bg-red-50 border border-red-200 rounded-lg p-6">
             <h1 className="text-xl font-bold text-red-800 mb-2">エラー</h1>
             <p className="text-red-600 mb-4">{error || "デバイスが見つかりません"}</p>
-            <Link href="/devices" className="text-blue-500 hover:text-blue-700">
-              ← デバイス一覧に戻る
+            <Link href="/dashboard" className="text-blue-500 hover:text-blue-700">
+              ← ダッシュボードに戻る
             </Link>
           </div>
         </div>
@@ -95,8 +95,8 @@ export default function DeviceDetailPage() {
     <AuthGuard>
       <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-6">
-        <Link href="/devices" className="text-blue-500 hover:text-blue-700 mb-4 inline-block">
-          ← デバイス一覧に戻る
+        <Link href="/dashboard" className="text-blue-500 hover:text-blue-700 mb-4 inline-block">
+          ← ダッシュボードに戻る
         </Link>
         <h1 className="text-3xl font-bold mb-2">デバイス詳細: {device.deviceId}</h1>
         {device.label && <p className="text-gray-600">{device.label}</p>}
