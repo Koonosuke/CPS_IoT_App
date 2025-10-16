@@ -34,27 +34,27 @@ export default function LoginPage() {
 
   return (
     <AuthGuard requireAuth={false}>
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8">
-          <div>
-            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-              アカウントにログイン
-            </h2>
-            <p className="mt-2 text-center text-sm text-gray-600">
-              または{' '}
-              <Link
-                href="/auth/signup"
-                className="font-medium text-blue-600 hover:text-blue-500"
-              >
-                新規アカウント作成
-              </Link>
-            </p>
-          </div>
-          
-          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-            <div className="rounded-md shadow-sm -space-y-px">
+      <div className="min-h-screen flex items-center justify-center py-12 px-4">
+        <div className="max-w-sm w-full">
+          <div className="bg-white rounded-lg border border-gray-200 p-8">
+            <div className="text-center mb-6">
+              <h1 className="text-xl font-semibold text-gray-900 mb-2">
+                ログイン
+              </h1>
+              <p className="text-sm text-gray-600">
+                アカウントをお持ちでない場合は{' '}
+                <Link
+                  href="/auth/signup"
+                  className="text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  新規登録
+                </Link>
+              </p>
+            </div>
+            
+            <form className="space-y-4" onSubmit={handleSubmit}>
               <div>
-                <label htmlFor="email" className="sr-only">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                   メールアドレス
                 </label>
                 <input
@@ -63,14 +63,15 @@ export default function LoginPage() {
                   type="email"
                   autoComplete="email"
                   required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="メールアドレス"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="your@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
+              
               <div>
-                <label htmlFor="password" className="sr-only">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
                   パスワード
                 </label>
                 <input
@@ -79,46 +80,37 @@ export default function LoginPage() {
                   type="password"
                   autoComplete="current-password"
                   required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="パスワード"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
-            </div>
 
-            {error && (
-              <div className="rounded-md bg-red-50 p-4">
-                <div className="text-sm text-red-700">{error}</div>
-              </div>
-            )}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
+              )}
 
-            <div>
               <button
                 type="submit"
                 disabled={loading}
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'ログイン中...' : 'ログイン'}
               </button>
-            </div>
+            </form>
 
-            <div className="text-center space-y-2">
+            <div className="mt-6 text-center">
               <Link
                 href="/auth/forgot-password"
-                className="font-medium text-blue-600 hover:text-blue-500 block"
+                className="text-sm text-blue-600 hover:text-blue-800"
               >
                 パスワードを忘れた場合
               </Link>
-              <div className="text-gray-600">または</div>
-              <Link
-                href="/auth/signup"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-              >
-                新規アカウント作成
-              </Link>
             </div>
-          </form>
+          </div>
         </div>
       </div>
     </AuthGuard>

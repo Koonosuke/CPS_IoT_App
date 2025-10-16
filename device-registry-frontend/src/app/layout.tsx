@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { Navbar } from "@/components/Navbar";
 
 export const metadata: Metadata = {
   title: "IoT Water Level Device Registry",
@@ -16,6 +17,7 @@ export default function RootLayout({
     <html lang="ja">
       <body className="antialiased">
         <AuthProvider>
+          <Navbar />
           {children}
         </AuthProvider>
       </body>
