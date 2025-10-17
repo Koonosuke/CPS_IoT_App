@@ -77,15 +77,19 @@ export const deviceApi = {
   // 利用可能なデバイス一覧取得
   getAvailableDevices: (): Promise<Array<{
     deviceId: string;
-    label: string;
+    deviceType: string;
+    agriculturalSite: string;
+    fieldName: string;
+    physicalLocation?: string;
     description: string;
-    location: string;
   }>> => 
     fetchApi<Array<{
       deviceId: string;
-      label: string;
+      deviceType: string;
+      agriculturalSite: string;
+      fieldName: string;
+      physicalLocation?: string;
       description: string;
-      location: string;
     }>>('/devices/available'),
 
   // デバイス詳細取得

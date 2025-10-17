@@ -99,7 +99,7 @@ export default function DeviceDetailPage() {
           ← ダッシュボードに戻る
         </Link>
         <h1 className="text-3xl font-bold mb-2">デバイス詳細: {device.deviceId}</h1>
-        {device.label && <p className="text-gray-600">{device.label}</p>}
+        <p className="text-gray-600">{device.deviceType}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -112,26 +112,24 @@ export default function DeviceDetailPage() {
                 <label className="text-sm font-medium text-gray-500">デバイスID</label>
                 <p className="text-lg">{device.deviceId}</p>
               </div>
-              {device.label && (
+              <div>
+                <label className="text-sm font-medium text-gray-500">農業用地</label>
+                <p className="text-lg">{device.agriculturalSite}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-500">圃場名</label>
+                <p className="text-lg">{device.fieldName}</p>
+              </div>
+              {device.physicalLocation && (
                 <div>
-                  <label className="text-sm font-medium text-gray-500">ラベル</label>
-                  <p className="text-lg">{device.label}</p>
-                </div>
-              )}
-              {device.fieldId && (
-                <div>
-                  <label className="text-sm font-medium text-gray-500">圃場ID</label>
-                  <p className="text-lg">{device.fieldId}</p>
+                  <label className="text-sm font-medium text-gray-500">設置場所</label>
+                  <p className="text-lg">{device.physicalLocation}</p>
                 </div>
               )}
               <div>
-                <label className="text-sm font-medium text-gray-500">登録状態</label>
-                <span className={`inline-block px-2 py-1 rounded text-sm ${
-                  device.claimStatus === 'claimed' 
-                    ? 'bg-green-100 text-green-800' 
-                    : 'bg-yellow-100 text-yellow-800'
-                }`}>
-                  {device.claimStatus === 'claimed' ? '登録済み' : '未登録'}
+                <label className="text-sm font-medium text-gray-500">所有権</label>
+                <span className={`inline-block px-2 py-1 rounded text-sm bg-green-100 text-green-800`}>
+                  {device.ownershipType}
                 </span>
               </div>
               {device.lat && device.lon && (
@@ -143,6 +141,10 @@ export default function DeviceDetailPage() {
                   </p>
                 </div>
               )}
+              <div>
+                <label className="text-sm font-medium text-gray-500">割当日時</label>
+                <p className="text-sm">{formatTime(device.assignedAt)}</p>
+              </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">最終更新</label>
                 <p className="text-sm">{formatTime(device.updatedAt)}</p>

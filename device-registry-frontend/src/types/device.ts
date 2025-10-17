@@ -3,13 +3,18 @@
  */
 
 export interface Device {
-  userId: string;
   deviceId: string;
-  claimStatus?: string;
-  label?: string;
-  fieldId?: string;
+  deviceType: string;
+  agriculturalSite: string;
+  fieldName: string;
+  physicalLocation?: string;
   lat?: number;
   lon?: number;
+  description?: string;
+  firmwareVersion?: string;
+  isActive: boolean;
+  ownershipType: string;
+  assignedAt: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -17,23 +22,31 @@ export interface Device {
 export interface DeviceStats {
   userId: string;
   deviceId: string;
-  label?: string;
-  fieldId?: string;
+  deviceType: string;
+  agriculturalSite: string;
+  fieldName: string;
+  physicalLocation?: string;
   lat?: number;
   lon?: number;
   latestDistance?: number;
   lastUpdate?: string;
-  claimStatus: string;
+  ownershipType: string;
+  assignedAt: string;
 }
 
 export interface DeviceDetail {
-  userId: string;
   deviceId: string;
-  label?: string;
-  fieldId?: string;
+  deviceType: string;
+  agriculturalSite: string;
+  fieldName: string;
+  physicalLocation?: string;
   lat?: number;
   lon?: number;
-  claimStatus: string;
+  description?: string;
+  firmwareVersion?: string;
+  isActive: boolean;
+  ownershipType: string;
+  assignedAt: string;
   createdAt: string;
   updatedAt: string;
 }
