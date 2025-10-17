@@ -14,16 +14,16 @@ from app.auth.dependencies import get_current_user_id
 
 # ---------- 環境 ----------
 AWS_REGION   = os.getenv("AWS_REGION", "us-east-1")
-REGISTRY_TBL = os.getenv("REGISTRY_TABLE", "DeviceRegistryV2")
 USER_TBL     = os.getenv("USER_TABLE", "UserRegistry")
 DEVICE_MASTER_TBL = os.getenv("DEVICE_MASTER_TABLE", "DeviceMaster")
+DEVICE_OWNERSHIP_TBL = os.getenv("DEVICE_OWNERSHIP_TABLE", "DeviceOwnership")
 TS_DB        = os.getenv("TS_DB", "iot_waterlevel_db")
 TS_TABLE     = os.getenv("TS_TABLE", "distance_table")
 
 dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
-ddb_tbl  = dynamodb.Table(REGISTRY_TBL)
 user_tbl = dynamodb.Table(USER_TBL)
 device_master_tbl = dynamodb.Table(DEVICE_MASTER_TBL)
+ownership_tbl = dynamodb.Table(DEVICE_OWNERSHIP_TBL)
 ts_query = boto3.client("timestream-query", region_name=AWS_REGION)
 
 # ---------- スキーマ ----------
@@ -33,13 +33,18 @@ class ClaimRequest(BaseModel):
     lon: float
 
 class DeviceItem(BaseModel):
-    userId: str
     deviceId: str
-    label: Optional[str] = None
-    fieldId: Optional[str] = None
+    deviceType: str
+    agriculturalSite: str
+    fieldName: str
+    physicalLocation: Optional[str] = None
     lat: Optional[float] = None
     lon: Optional[float] = None
-    claimStatus: str
+    description: Optional[str] = None
+    firmwareVersion: Optional[str] = None
+    isActive: bool
+    ownershipType: str
+    assignedAt: str
     createdAt: str
     updatedAt: str
 
@@ -154,6 +159,24 @@ app.include_router(auth_router, prefix="/api/v1")
 def now_utc_iso():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
+def get_next_ownership_id():
+    """次の所有権IDを取得"""
+    try:
+        # 現在の最大IDを取得
+        response = ownership_tbl.scan(
+            ProjectionExpression="ownershipId",
+            Select="ALL_ATTRIBUTES"
+        )
+        
+        max_id = 0
+        for item in response.get('Items', []):
+            ownership_id = int(item['ownershipId'])
+            max_id = max(max_id, ownership_id)
+        
+        return str(max_id + 1)
+    except:
+        return "1"  # 最初のレコード
+
 # ---------- エンドポイント ----------
 
 @app.post("/devices/claim", response_model=DeviceItem,
@@ -161,7 +184,7 @@ def now_utc_iso():
           description="利用可能なデバイスを選択してクレームし、位置情報を登録します。")
 def claim_device(body: ClaimRequest, user_id: str = Depends(get_current_user_id)):
     try:
-        # 1. DeviceMasterテーブルから指定されたデバイスが利用可能かチェック
+        # 1. DeviceMasterテーブルから指定されたデバイスが存在するかチェック
         device_master_response = device_master_tbl.get_item(
             Key={"deviceId": body.deviceId}
         )
@@ -171,50 +194,42 @@ def claim_device(body: ClaimRequest, user_id: str = Depends(get_current_user_id)
         
         device_master = device_master_response["Item"]
         
-        if device_master.get("status") != "available":
-            raise HTTPException(400, f"Device {body.deviceId} is not available for claiming")
-        
-        # 2. 既にクレームされているかチェック
-        existing_device = ddb_tbl.get_item(Key={"userId": user_id, "deviceId": body.deviceId})
-        if existing_device.get("Item"):
-            raise HTTPException(409, f"Device {body.deviceId} is already claimed by this user")
-        
-        # 3. 他のユーザーがクレームしていないかチェック
-        scan_response = ddb_tbl.scan(
-            FilterExpression="deviceId = :device_id AND claimStatus = :status",
+        # 2. 既に他のユーザーがクレームしていないかチェック
+        existing_ownership = ownership_tbl.scan(
+            FilterExpression="deviceId = :device_id AND isActive = :active",
             ExpressionAttributeValues={
                 ":device_id": body.deviceId,
-                ":status": "claimed"
+                ":active": "true"
             }
         )
-        if scan_response.get("Items"):
+        if existing_ownership.get("Items"):
             raise HTTPException(409, f"Device {body.deviceId} is already claimed by another user")
         
-        # 4. デバイスをクレーム
-        device_item = {
+        # 3. 次の所有権IDを取得
+        ownership_id = get_next_ownership_id()
+        
+        # 4. DeviceOwnershipに所有権を登録
+        ownership_item = {
+            "ownershipId": ownership_id,
             "userId": user_id,
             "deviceId": body.deviceId,
-            "label": device_master.get("label", f"デバイス {body.deviceId[-3:]}"),
-            "fieldId": f"field-{body.deviceId[-3:]}",
-            "lat": Decimal(str(body.lat)),
-            "lon": Decimal(str(body.lon)),
-            "claimStatus": "claimed",
+            "ownershipType": "owner",
+            "assignedAt": now_utc_iso(),
+            "assignedBy": "user",
+            "isActive": "true",
             "createdAt": now_utc_iso(),
             "updatedAt": now_utc_iso()
         }
         
-        # 5. DeviceRegistryV2にユーザーのデバイスとして登録
-        ddb_tbl.put_item(Item=device_item)
+        ownership_tbl.put_item(Item=ownership_item)
         
-        # 6. DeviceMasterテーブルのステータスを更新
+        # 5. DeviceMasterの位置情報を更新
         device_master_tbl.update_item(
             Key={"deviceId": body.deviceId},
-            UpdateExpression="SET #status = :status, updatedAt = :updated_at",
-            ExpressionAttributeNames={
-                "#status": "status"
-            },
+            UpdateExpression="SET lat = :lat, lon = :lon, updatedAt = :updated_at",
             ExpressionAttributeValues={
-                ":status": "claimed",
+                ":lat": Decimal(str(body.lat)),
+                ":lon": Decimal(str(body.lon)),
                 ":updated_at": now_utc_iso()
             }
         )
@@ -222,15 +237,20 @@ def claim_device(body: ClaimRequest, user_id: str = Depends(get_current_user_id)
         print(f"DEBUG: Device {body.deviceId} claimed by user {user_id}")
         
         return DeviceItem(
-            userId=user_id,
-            deviceId=body.deviceId,
-            label=device_item["label"],
-            fieldId=device_item["fieldId"],
+            deviceId=device_master["deviceId"],
+            deviceType=device_master["deviceType"],
+            agriculturalSite=device_master["agriculturalSite"],
+            fieldName=device_master["fieldName"],
+            physicalLocation=device_master.get("physicalLocation"),
             lat=body.lat,
             lon=body.lon,
-            claimStatus="claimed",
-            createdAt=device_item["createdAt"],
-            updatedAt=device_item["updatedAt"],
+            description=device_master.get("description"),
+            firmwareVersion=device_master.get("firmwareVersion"),
+            isActive=device_master["isActive"],
+            ownershipType="owner",
+            assignedAt=ownership_item["assignedAt"],
+            createdAt=device_master["createdAt"],
+            updatedAt=now_utc_iso(),
         )
         
     except HTTPException:
@@ -243,9 +263,16 @@ def claim_device(body: ClaimRequest, user_id: str = Depends(get_current_user_id)
          summary="デバイスの最新データを取得",
          description="指定されたデバイスIDの最新の水位測定データを取得します。")
 def latest_metric(deviceId: str, user_id: str = Depends(get_current_user_id)):
-    # ユーザーがこのデバイスを所有しているかチェック
-    device_check = ddb_tbl.get_item(Key={"userId": user_id, "deviceId": deviceId})
-    if not device_check.get("Item"):
+    # ユーザーがこのデバイスを所有しているかチェック（DeviceOwnershipベース）
+    ownership_check = ownership_tbl.scan(
+        FilterExpression="userId = :user_id AND deviceId = :device_id AND isActive = :active",
+        ExpressionAttributeValues={
+            ":user_id": user_id,
+            ":device_id": deviceId,
+            ":active": "true"
+        }
+    )
+    if not ownership_check.get("Items"):
         raise HTTPException(404, f"Device {deviceId} not found or not owned by user")
     
     q = f"""
@@ -271,9 +298,16 @@ def latest_metric(deviceId: str, user_id: str = Depends(get_current_user_id)):
          description="指定されたデバイスIDの過去の水位測定データを取得します。")
 def device_history(deviceId: str, hours: int = 24, limit: int = 100, user_id: str = Depends(get_current_user_id)):
     """デバイスの履歴データを取得"""
-    # ユーザーがこのデバイスを所有しているかチェック
-    device_check = ddb_tbl.get_item(Key={"userId": user_id, "deviceId": deviceId})
-    if not device_check.get("Item"):
+    # ユーザーがこのデバイスを所有しているかチェック（DeviceOwnershipベース）
+    ownership_check = ownership_tbl.scan(
+        FilterExpression="userId = :user_id AND deviceId = :device_id AND isActive = :active",
+        ExpressionAttributeValues={
+            ":user_id": user_id,
+            ":device_id": deviceId,
+            ":active": "true"
+        }
+    )
+    if not ownership_check.get("Items"):
         raise HTTPException(404, f"Device {deviceId} not found or not owned by user")
     
     q = f"""
@@ -308,20 +342,28 @@ def device_history(deviceId: str, hours: int = 24, limit: int = 100, user_id: st
 def devices_stats(user_id: str = Depends(get_current_user_id)):
     """全デバイスの統計情報を取得"""
     
-    # ユーザー固有のデバイス一覧を取得
-    resp = ddb_tbl.query(
-        KeyConditionExpression="userId = :user_id",
-        ExpressionAttributeValues={":user_id": user_id}
+    # 1. DeviceOwnershipからユーザーのデバイス一覧を取得
+    ownership_response = ownership_tbl.scan(
+        FilterExpression="userId = :user_id AND isActive = :active",
+        ExpressionAttributeValues={
+            ":user_id": user_id,
+            ":active": "true"
+        }
     )
-    items = resp.get("Items", [])
+    ownership_items = ownership_response.get("Items", [])
     
-    claimed_devices = [item for item in items if item.get("claimStatus") == "claimed"]
-    
-    # 各デバイスの最新データを取得
+    # 2. 各デバイスの最新データを取得
     device_stats = []
-    for device in claimed_devices:
-        device_id = device["deviceId"]
+    for ownership in ownership_items:
+        device_id = ownership["deviceId"]
         try:
+            # DeviceMasterからデバイス詳細を取得
+            device_response = device_master_tbl.get_item(Key={"deviceId": device_id})
+            device = device_response.get("Item")
+            
+            if not device:
+                continue
+            
             # Timestreamから最新データを直接取得
             q = f"""
             SELECT time, measure_value::double AS distance
@@ -341,48 +383,57 @@ def devices_stats(user_id: str = Depends(get_current_user_id)):
                 distance_value = latest_record['Data'][1].get('ScalarValue')
                 
                 device_stats.append({
-                    "userId": device["userId"],
+                    "userId": ownership["userId"],
                     "deviceId": device_id,
-                    "label": device.get("label"),
-                    "fieldId": device.get("fieldId"),
+                    "deviceType": device["deviceType"],
+                    "agriculturalSite": device["agriculturalSite"],
+                    "fieldName": device["fieldName"],
+                    "physicalLocation": device.get("physicalLocation"),
                     "lat": float(device["lat"]) if device.get("lat") else None,
                     "lon": float(device["lon"]) if device.get("lon") else None,
                     "latestDistance": float(distance_value) if distance_value else None,
                     "lastUpdate": time_value,
-                    "claimStatus": device.get("claimStatus", "unclaimed")
+                    "ownershipType": ownership["ownershipType"],
+                    "assignedAt": ownership["assignedAt"]
                 })
             else:
                 # データがない場合
                 device_stats.append({
-                    "userId": device["userId"],
+                    "userId": ownership["userId"],
                     "deviceId": device_id,
-                    "label": device.get("label"),
-                    "fieldId": device.get("fieldId"),
+                    "deviceType": device["deviceType"],
+                    "agriculturalSite": device["agriculturalSite"],
+                    "fieldName": device["fieldName"],
+                    "physicalLocation": device.get("physicalLocation"),
                     "lat": float(device["lat"]) if device.get("lat") else None,
                     "lon": float(device["lon"]) if device.get("lon") else None,
                     "latestDistance": None,
                     "lastUpdate": None,
-                    "claimStatus": device.get("claimStatus", "unclaimed")
+                    "ownershipType": ownership["ownershipType"],
+                    "assignedAt": ownership["assignedAt"]
                 })
         except Exception as e:
             print(f"ERROR: Failed to get latest data for device {device_id}: {str(e)}")
             # データが取得できない場合はデフォルト値で追加
             device_stats.append({
-                "userId": device["userId"],
+                "userId": ownership["userId"],
                 "deviceId": device_id,
-                "label": device.get("label"),
-                "fieldId": device.get("fieldId"),
+                "deviceType": device.get("deviceType", "Unknown"),
+                "agriculturalSite": device.get("agriculturalSite", "Unknown"),
+                "fieldName": device.get("fieldName", "Unknown"),
+                "physicalLocation": device.get("physicalLocation"),
                 "lat": float(device["lat"]) if device.get("lat") else None,
                 "lon": float(device["lon"]) if device.get("lon") else None,
                 "latestDistance": None,
                 "lastUpdate": None,
-                "claimStatus": device.get("claimStatus", "unclaimed")
+                "ownershipType": ownership["ownershipType"],
+                "assignedAt": ownership["assignedAt"]
             })
     
     return {
         "userId": user_id,
-        "totalDevices": len(items),
-        "claimedDevices": len(claimed_devices),
+        "totalDevices": len(device_stats),
+        "claimedDevices": len(device_stats),
         "devices": device_stats
     }
 
@@ -395,34 +446,42 @@ def get_available_devices():
         print(f"DEBUG: Starting get_available_devices")
         print(f"DEBUG: Using table: {device_master_tbl.table_name}")
         
-        # DeviceMasterテーブルから利用可能なデバイスを取得
-        # statusは予約語なので、ExpressionAttributeNamesを使用
-        response = device_master_tbl.scan(
-            FilterExpression="#status = :status",
-            ExpressionAttributeNames={
-                "#status": "status"
-            },
+        # 1. DeviceMasterテーブルから全デバイスを取得
+        all_devices_response = device_master_tbl.scan()
+        all_devices = all_devices_response.get("Items", [])
+        
+        # 2. DeviceOwnershipから既にクレームされているデバイスを取得
+        claimed_devices_response = ownership_tbl.scan(
+            FilterExpression="isActive = :active",
             ExpressionAttributeValues={
-                ":status": "available"
+                ":active": "true"
             }
         )
+        claimed_device_ids = {item["deviceId"] for item in claimed_devices_response.get("Items", [])}
         
-        print(f"DEBUG: Raw response from DynamoDB: {response}")
+        # 3. 利用可能なデバイス（クレームされていないデバイス）をフィルタリング
+        available_devices = [
+            device for device in all_devices 
+            if device["deviceId"] not in claimed_device_ids
+        ]
         
-        available_devices = []
-        for item in response.get("Items", []):
+        # 4. レスポンス用のデータを整形
+        result_devices = []
+        for device in available_devices:
             device_data = {
-                "deviceId": item["deviceId"],
-                "label": item.get("label", f"デバイス {item['deviceId'][-3:]}"),
-                "description": item.get("description", "水位監視センサー"),
-                "location": item.get("location", "未設定")
+                "deviceId": device["deviceId"],
+                "deviceType": device.get("deviceType", "水位センサー"),
+                "agriculturalSite": device.get("agriculturalSite", "未設定"),
+                "fieldName": device.get("fieldName", "未設定"),
+                "physicalLocation": device.get("physicalLocation", "未設定"),
+                "description": device.get("description", "水位監視センサー")
             }
-            available_devices.append(device_data)
+            result_devices.append(device_data)
             print(f"DEBUG: Added device: {device_data}")
         
-        print(f"DEBUG: Found {len(available_devices)} available devices from DeviceMaster table")
-        print(f"DEBUG: Returning devices: {available_devices}")
-        return available_devices
+        print(f"DEBUG: Found {len(result_devices)} available devices")
+        print(f"DEBUG: Returning devices: {result_devices}")
+        return result_devices
         
     except Exception as e:
         print(f"ERROR: Failed to get available devices from DeviceMaster: {str(e)}")
@@ -472,32 +531,49 @@ def list_devices(user_id: str = Depends(get_current_user_id)):
     # Cognito認証からユーザーIDを取得
     print(f"DEBUG: Current user_id: {user_id}")
     
-    resp = ddb_tbl.query(
-        KeyConditionExpression="userId = :user_id",
-        ExpressionAttributeValues={":user_id": user_id}
+    # 1. DeviceOwnershipからユーザーのデバイス一覧を取得
+    ownership_response = ownership_tbl.scan(
+        FilterExpression="userId = :user_id AND isActive = :active",
+        ExpressionAttributeValues={
+            ":user_id": user_id,
+            ":active": "true"
+        }
     )
-    items = resp.get("Items", [])
-    print(f"DEBUG: Found {len(items)} devices for user {user_id}")
+    ownership_items = ownership_response.get("Items", [])
+    print(f"DEBUG: Found {len(ownership_items)} ownership records for user {user_id}")
     
-    # デバイスが存在しない場合は空のリストを返す（自動テストデバイス作成を停止）
-    if not items:
+    # デバイスが存在しない場合は空のリストを返す
+    if not ownership_items:
         print(f"DEBUG: No devices found for user {user_id}, returning empty list")
+        return []
     
-    out = []
-    for it in items:
-        out.append(DeviceItem(
-            userId=it["userId"],
-            deviceId=it["deviceId"],
-            label=it.get("label"),
-            fieldId=it.get("fieldId"),
-            # ここで None の場合は float に変換せず、そのまま None を返す
-            lat=float(it["lat"]) if it.get("lat") is not None else None,
-            lon=float(it["lon"]) if it.get("lon") is not None else None,
-            claimStatus=it.get("claimStatus","unclaimed"),
-            createdAt=it.get("createdAt", now_utc_iso()),
-            updatedAt=it.get("updatedAt", now_utc_iso()),
-        ))
-    return out
+    devices = []
+    for ownership in ownership_items:
+        # 2. DeviceMasterからデバイス詳細を取得
+        device_response = device_master_tbl.get_item(
+            Key={"deviceId": ownership["deviceId"]}
+        )
+        
+        if device_response.get("Item"):
+            device = device_response["Item"]
+            devices.append(DeviceItem(
+                deviceId=device["deviceId"],
+                deviceType=device["deviceType"],
+                agriculturalSite=device["agriculturalSite"],
+                fieldName=device["fieldName"],
+                physicalLocation=device.get("physicalLocation"),
+                lat=float(device["lat"]) if device.get("lat") is not None else None,
+                lon=float(device["lon"]) if device.get("lon") is not None else None,
+                description=device.get("description"),
+                firmwareVersion=device.get("firmwareVersion"),
+                isActive=device["isActive"],
+                ownershipType=ownership["ownershipType"],
+                assignedAt=ownership["assignedAt"],
+                createdAt=device["createdAt"],
+                updatedAt=device["updatedAt"],
+            ))
+    
+    return devices
 
 
 @app.get("/devices/{deviceId}", response_model=DeviceItem,
@@ -507,28 +583,53 @@ def get_device(deviceId: str, user_id: str = Depends(get_current_user_id)):
     # Cognito認証からユーザーIDを取得
     print(f"DEBUG: Looking for deviceId={deviceId}, userId={user_id}")
     
-    r = ddb_tbl.get_item(Key={"userId": user_id, "deviceId": deviceId})
-    it = r.get("Item")
-    print(f"DEBUG: DynamoDB response: {r}")
+    # 1. DeviceOwnershipから所有権を確認
+    ownership_response = ownership_tbl.scan(
+        FilterExpression="userId = :user_id AND deviceId = :device_id AND isActive = :active",
+        ExpressionAttributeValues={
+            ":user_id": user_id,
+            ":device_id": deviceId,
+            ":active": "true"
+        }
+    )
+    ownership_items = ownership_response.get("Items", [])
+    print(f"DEBUG: Found {len(ownership_items)} ownership records")
     
-    if not it:
+    if not ownership_items:
         # デバッグ用: ユーザーの全デバイスを確認
-        resp = ddb_tbl.query(
-            KeyConditionExpression="userId = :user_id",
-            ExpressionAttributeValues={":user_id": user_id}
+        user_ownership_response = ownership_tbl.scan(
+            FilterExpression="userId = :user_id AND isActive = :active",
+            ExpressionAttributeValues={
+                ":user_id": user_id,
+                ":active": "true"
+            }
         )
-        user_devices = resp.get("Items", [])
+        user_devices = user_ownership_response.get("Items", [])
         print(f"DEBUG: User has {len(user_devices)} devices: {[d['deviceId'] for d in user_devices]}")
         raise HTTPException(404, f"device not found for userId={user_id}, deviceId={deviceId}")
+    
+    ownership = ownership_items[0]
+    
+    # 2. DeviceMasterからデバイス詳細を取得
+    device_response = device_master_tbl.get_item(Key={"deviceId": deviceId})
+    device = device_response.get("Item")
+    
+    if not device:
+        raise HTTPException(404, f"device {deviceId} not found in DeviceMaster")
 
     return DeviceItem(
-        userId=it["userId"],
-        deviceId=it["deviceId"],
-        label=it.get("label"),
-        fieldId=it.get("fieldId"),
-        lat=float(it["lat"]) if it.get("lat") is not None else None,
-        lon=float(it["lon"]) if it.get("lon") is not None else None,
-        claimStatus=it.get("claimStatus", "unclaimed"),
-        createdAt=it.get("createdAt", now_utc_iso()),
-        updatedAt=it.get("updatedAt", now_utc_iso()),
+        deviceId=device["deviceId"],
+        deviceType=device["deviceType"],
+        agriculturalSite=device["agriculturalSite"],
+        fieldName=device["fieldName"],
+        physicalLocation=device.get("physicalLocation"),
+        lat=float(device["lat"]) if device.get("lat") is not None else None,
+        lon=float(device["lon"]) if device.get("lon") is not None else None,
+        description=device.get("description"),
+        firmwareVersion=device.get("firmwareVersion"),
+        isActive=device["isActive"],
+        ownershipType=ownership["ownershipType"],
+        assignedAt=ownership["assignedAt"],
+        createdAt=device["createdAt"],
+        updatedAt=device["updatedAt"],
     )
