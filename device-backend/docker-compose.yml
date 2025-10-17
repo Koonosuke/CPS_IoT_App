@@ -7,7 +7,9 @@ services:
       - "8000:8000"
     environment:
       - AWS_REGION=us-east-1
-      - REGISTRY_TABLE=DeviceRegistry
+      - USER_TABLE=UserRegistry
+      - DEVICE_MASTER_TABLE=DeviceMaster
+      - DEVICE_OWNERSHIP_TABLE=DeviceOwnership
       - TS_DB=iot_waterlevel_db
       - TS_TABLE=distance_table
       - CORS_ORIGINS=*
